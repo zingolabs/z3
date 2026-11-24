@@ -153,7 +153,7 @@ healthchecks:
     transport: https
     port: 8137
     profile: zingod
-    readiness: "/readyz"   # public, on the gRPC listener; 503 until indexes reach the tip
+    readiness: "/readyz"
     note: "Self-signed certificate by default; probes skip verification."
   zallet:
     transport: none
@@ -188,7 +188,7 @@ env_vars:
     - {name: Z3_ZINGOD_IMAGE, namespace: z3, profile: zingod}
     - {name: Z3_ZALLET_IMAGE, namespace: z3}
     - {name: Z3_ZEBRA_BUILD_FEATURES, namespace: z3, description: "Build arg when building Zebra from source."}
-    - {name: DOCKER_PLATFORM, namespace: docker, description: "Optional platform pin. Zebra and Zallet are multi-arch (no pin needed); Zaino and Zingod publish amd64 only and are pinned in compose. Override to build them native arm64 from source (docker-compose.build.yml)."}
+    - {name: DOCKER_PLATFORM, namespace: docker, description: "Optional platform pin. Zebra and Zallet are multi-arch (no pin needed); Zaino publishes amd64 only and is pinned in compose. Override to build Zaino native arm64 from source (docker-compose.build.yml)."}
 
   ports:
     # Host ports (z3 controls the per-network port matrix; testnet/regtest offset).
@@ -267,7 +267,7 @@ profiles:
 
 # Platform constraints per image. Entries listed as amd64-only run under
 # emulation on arm64 hosts even when DOCKER_PLATFORM=linux/arm64 is set.
-# For native arm64 of Zaino or Zingod, build locally from source (docker-compose.build.yml).
+# For native arm64 of Zaino, build locally from source (docker-compose.build.yml).
 image_platforms:
   zebra:  [linux/amd64, linux/arm64]
   zaino:  [linux/amd64]

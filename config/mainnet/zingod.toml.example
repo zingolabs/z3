@@ -1,7 +1,7 @@
 # Zingod configuration: Mainnet (--profile zingod)
 #
-# - Every key + default: `docker run --rm zingodevops/zingod generate-config -o /dev/stdout`
-# - Any key also settable as ZINGOD_CONFIG_<TABLE>__<KEY> (unknown key = refused at boot)
+# - Keys: https://github.com/zingolabs/zingod/blob/v1.2.0/book/src/operators/configuration.md
+# - Not for production mainnet use: https://github.com/zingolabs/zingod/blob/v1.2.0/packages/zingod/src/daemon.rs#L80
 
 network = "mainnet"
 
@@ -11,5 +11,5 @@ cookie_path = "/var/run/auth/.cookie"
 
 [serve]
 tls = "self_signed"
-# Own pair: files in config/<network>/tls/ (readable by uid 1000), reloaded on change
+# Own pair: config/mainnet/tls/ → /etc/zingod/tls (https://github.com/zingolabs/zingod/blob/v1.2.0/book/src/operators/docker.md#tls-certificates)
 # tls = { cert_path = "/etc/zingod/tls/fullchain.pem", key_path = "/etc/zingod/tls/privkey.pem" }

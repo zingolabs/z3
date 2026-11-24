@@ -3,8 +3,9 @@
 
 Parses the platform contract's port matrix, volume names, RPC auth mode, and
 service DNS directly from z3-contract.yaml, runs `docker compose --env-file
-.env.<net> --profile monitoring --profile indexer config` for each declared
-network, and asserts that the resolved values match.
+.env.<net> config` with every profile the contract declares for each network,
+and asserts that the resolved values match. Zingod reads its Zebra address and
+cookie from config/<net>/zingod.toml.example, so those are checked there.
 
 Volumes and ports can be plain values or {name, profile} / {container, host,
 profile} dicts. Profile-gated entries are checked the same way: the renderer
@@ -26,6 +27,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tomllib
 
 try:
     import yaml
@@ -35,6 +37,7 @@ except ImportError:
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONTRACT_FILE = ROOT / "z3-contract.yaml"
+COMPOSE_FILE = ROOT / "docker-compose.yml"
 PROMETHEUS_CONFIG = ROOT / "observability" / "prometheus" / "prometheus.yaml"
 
 
@@ -152,6 +155,57 @@ def validate_no_undeclared_host_ports(asserter: Asserter, ports: dict, config: s
         print("  OK   no undeclared published host ports")
 
 
+def validate_zingod_config(asserter: Asserter, network_name: str, spec: dict,
+                           contract: dict) -> None:
+    template = ROOT / "config" / network_name / "zingod.toml.example"
+    config = tomllib.loads(template.read_text())
+    validators = config.get("trusted_validators", [])
+    if len(validators) != 1:
+        asserter.fail(f"{template.relative_to(ROOT)}: expected one [[trusted_validators]]")
+        return
+    validator = validators[0]
+
+    expected = {
+        "network": network_name,
+        "jsonrpc_address": f"zebra:{spec['ports']['zebra_rpc']['container']}",
+        "cookie_path": (contract["cookie_path"]
+                        if spec.get("rpc_auth", {}).get("mode") == "cookie" else None),
+    }
+    actual = {
+        "network": config.get("network"),
+        "jsonrpc_address": validator.get("jsonrpc_address"),
+        "cookie_path": validator.get("cookie_path"),
+    }
+    if actual == expected:
+        print(f"  OK   Zingod -> Zebra = {expected}")
+    else:
+        asserter.fail(f"Zingod -> Zebra = {actual}, expected {expected}")
+
+
+def validate_zingod_doc_links(asserter: Asserter) -> None:
+    """Every version-tagged zingod link (behaviour z3 points at) = the compose image pin."""
+    pin = re.search(r"Z3_ZINGOD_IMAGE:-zingodevops/zingod:([^}]+)\}", COMPOSE_FILE.read_text())
+    if pin is None:
+        asserter.fail("Zingod image pin not found in docker-compose.yml")
+        return
+    tag = f"v{pin.group(1)}"
+
+    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
+                             check=True).stdout.split()
+    stale = sorted(
+        f"{path}: {ref}"
+        for path in tracked
+        if (ROOT / path).is_file()
+        for ref in re.findall(r"github\.com/zingolabs/zingod/blob/([^/]+)/",
+                              (ROOT / path).read_text(errors="ignore"))
+        if ref != tag
+    )
+    for entry in stale:
+        asserter.fail(f"Zingod link not at image pin {tag}: {entry}")
+    if not stale:
+        print(f"  OK   Zingod links at image pin {tag}")
+
+
 def validate_network(asserter: Asserter, network_name: str, spec: dict) -> None:
     env_file = ROOT / f".env.{network_name}"
     if not env_file.exists():
@@ -234,26 +288,26 @@ def validate_network(asserter: Asserter, network_name: str, spec: dict) -> None:
     )
 
 
-def gated_service_names(contract: dict, profile: str) -> set[str]:
+def gated_service_names(contract: dict) -> set[str]:
     return {
         name for name, entry in contract["service_dns"].items()
-        if isinstance(entry, dict) and entry.get("profile") == profile
+        if isinstance(entry, dict) and "profile" in entry
     }
 
 
-def gated_host_ports(spec: dict, profile: str) -> set[int]:
+def gated_host_ports(spec: dict) -> set[int]:
     return {
         port_spec["host"]
         for port_spec in spec["ports"].values()
-        if port_spec.get("profile") == profile and port_spec.get("host") is not None
+        if "profile" in port_spec and port_spec.get("host") is not None
     }
 
 
-def gated_volume_names(spec: dict, profile: str) -> set[str]:
+def gated_volume_names(spec: dict) -> set[str]:
     return {
         volume_name(vol_entry)
         for vol_entry in spec["volumes"].values()
-        if isinstance(vol_entry, dict) and vol_entry.get("profile") == profile
+        if isinstance(vol_entry, dict) and "profile" in vol_entry
     }
 
 
@@ -272,15 +326,14 @@ def validate_default_excludes_profiled_services(asserter: Asserter, network_name
     config = render_compose(network_name, env_file, profiles=[])
     resolved = yaml.safe_load(config)
     services = resolved.get("services", {})
-    profiles = contract.get("profiles", {})
 
-    for service in sorted(set().union(*(gated_service_names(contract, p) for p in profiles))):
+    for service in sorted(gated_service_names(contract)):
         if service in services:
             asserter.fail(f"default render includes profile-gated service {service}")
         else:
             print(f"  OK   default render excludes service {service}")
 
-    gated_ports = set().union(*(gated_host_ports(spec, p) for p in profiles))
+    gated_ports = gated_host_ports(spec)
     rendered_hosts = {
         int(port["published"])
         for service_spec in services.values()
@@ -298,7 +351,7 @@ def validate_default_excludes_profiled_services(asserter: Asserter, network_name
         for vol_spec in resolved.get("volumes", {}).values()
         if isinstance(vol_spec, dict)
     }
-    for volume in sorted(set().union(*(gated_volume_names(spec, p) for p in profiles))):
+    for volume in sorted(gated_volume_names(spec)):
         if volume in rendered_volume_names:
             asserter.fail(f"default render includes profile-gated volume {volume}")
         else:
@@ -382,6 +435,7 @@ def main() -> int:
     healthchecks = contract.get("healthchecks", {})
     for net_name, net_spec in contract["networks"].items():
         validate_network(asserter, net_name, net_spec)
+        validate_zingod_config(asserter, net_name, net_spec, contract)
 
         print(f"-- Default topology ({net_name}) --")
         validate_default_excludes_profiled_services(asserter, net_name, net_spec, contract)
@@ -395,6 +449,10 @@ def main() -> int:
 
     print("== Cross-network host ports ==")
     validate_unique_host_ports(asserter, contract)
+
+    print()
+    print("== Zingod links ==")
+    validate_zingod_doc_links(asserter)
 
     print()
     print("== Prometheus scrape target ==")

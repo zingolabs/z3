@@ -79,6 +79,8 @@ docker compose --env-file .env.<network> --profile indexer up -d   # Zaino
 docker compose --env-file .env.<network> --profile zingod up -d    # Zingod
 ```
 
+On a checkout set up before Zingod was added, run `./scripts/setup-network.sh <network>` first: it creates `config/<network>/zingod.toml` and `config/<network>/tls/`, which the `zingod` service mounts.
+
 ### Where your data lives
 
 Each network keeps its chain state in a Docker named volume called `z3-<network>-chain`, which lands under Docker's data root (on Linux, `/var/lib/docker/volumes/`). Mainnet is roughly **300 GB**; size the disk before you start.
@@ -118,15 +120,9 @@ Default UI host ports are globally unique across the three networks (mainnet Gra
 Two lightwalletd-compatible indexers ship behind Compose profiles, for explorers, faucets, and light-wallet backends. Zallet reaches Zebra directly, so the default stack needs neither. Zebra and Zallet also use the word "indexer" for separate configuration and build surfaces; the [FAQ distinguishes their requirements](docs/faq.md#q-which-indexer-does-z3-use-and-does-zebra-need-the-indexer-build-feature).
 
 - **Zaino** (`--profile indexer`): gRPC on mainnet `8137` and a JSON-RPC proxy on `8237`. Starts once Zebra is `/ready`.
-- **[Zingod](https://github.com/zingolabs/zingod)** (`--profile zingod`): gRPC over TLS on mainnet `8138`, so it can run alongside Zaino. Starts with Zebra and indexes as Zebra syncs. Like Zebra's `/ready`, its health check stays unhealthy until both reach the network tip. Watch progress with `curl -sk https://localhost:8138/status`.
+- **[Zingod](https://github.com/zingolabs/zingod)** (`--profile zingod`): gRPC over TLS on mainnet `8138`, so it can run alongside Zaino. Starts with Zebra, without waiting for `/ready`. Zingod 1.2.0 is [not for production mainnet use](https://github.com/zingolabs/zingod/blob/v1.2.0/packages/zingod/src/daemon.rs#L80).
 
-Zingod serves a self-signed certificate until you give it your own, which wallets that verify certificates require:
-
-1. Copy your certificate chain and key into `config/<network>/tls/` as `fullchain.pem` and `privkey.pem`, readable by uid 1000: `sudo chown -R 1000:1000 config/<network>/tls`.
-2. In `config/<network>/zingod.toml`, comment out `tls = "self_signed"` and uncomment the `tls = { cert_path = ..., key_path = ... }` line below it.
-3. Restart: `docker compose --env-file .env.<network> --profile zingod restart zingod`.
-
-On renewal, replace the two files in place; Zingod reloads them within a minute, with no restart.
+Zingod serves a self-signed certificate by default. To serve your own, put it in `config/<network>/tls/` (mounted at `/etc/zingod/tls`) and switch `config/<network>/zingod.toml` to the commented `tls = { cert_path, key_path }` line. Certificate requirements: [Zingod TLS](https://github.com/zingolabs/zingod/blob/v1.2.0/book/src/operators/docker.md#tls-certificates).
 
 ### Stopping the stack
 
@@ -284,9 +280,9 @@ diff config/mainnet/zallet.toml config/mainnet/zallet.toml.example
 
 ### Platform configuration (ARM64)
 
-Zebra and Zallet are multi-arch; Docker picks the host's native arch automatically, no override needed. Zaino and Zingod are pinned to `linux/amd64` because their upstream images publish amd64 only. On Apple Silicon they run under emulation by default; the workload is light enough that this rarely matters.
+Zebra and Zallet are multi-arch; Docker picks the host's native arch automatically, no override needed. Zaino is pinned to `linux/amd64` because its upstream image publishes amd64 only. On Apple Silicon it runs under emulation by default; the workload is light enough that this rarely matters.
 
-To run Zaino (or Zingod, substituting `zingod` and `--profile zingod`) natively on arm64, build it from source:
+To run Zaino natively on arm64, build it from source:
 
 ```bash
 scripts/vendor.sh zaino
@@ -355,7 +351,7 @@ Z3 declares each volume with an explicit `name:` so the external Docker identifi
 |--------|----------|
 | `chain` | Zebra blockchain state (~300 GB mainnet, ~30 GB testnet) |
 | `zaino` | Zaino indexer database (indexer profile) |
-| `zingod` | Zingod indexes and TLS state (zingod profile) |
+| `zingod` | Zingod data (zingod profile) |
 | `zallet` | Zallet wallet database (contains keys) |
 | `cookie` | RPC authentication cookie for mainnet/testnet (regtest disables cookie auth) |
 
@@ -416,10 +412,10 @@ Zebra (/ready: synced near tip)
   -> Zaino (gRPC port responding; indexer profile)
 
 Zebra (started) + Cookie permissions
-  -> Zingod (/readyz: indexes at the network tip; zingod profile)
+  -> Zingod (zingod profile)
 ```
 
-The default compose gates Zallet on Zebra's `/ready` endpoint and on the cookie-permissions sidecar when cookie auth is enabled; the indexer profile adds Zaino under the same gates. Zingod waits only for Zebra to start and indexes as Zebra syncs. For development, copy `docker-compose.override.yml.example` to `docker-compose.override.yml` to switch Zebra gating to `/healthy` (allows services to start during sync, but they may error until Zebra catches up).
+The default compose gates Zallet on Zebra's `/ready` endpoint and on the cookie-permissions sidecar when cookie auth is enabled; the indexer profile adds Zaino under the same gates. Zingod waits for the cookie-permissions sidecar, but only for Zebra to start, not `/ready`. For development, copy `docker-compose.override.yml.example` to `docker-compose.override.yml` to switch Zebra gating to `/healthy` (allows services to start during sync, but they may error until Zebra catches up).
 
 ### Monitoring sync progress
 

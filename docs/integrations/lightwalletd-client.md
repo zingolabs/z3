@@ -60,14 +60,12 @@ grpcurl -plaintext \
 | Testnet | `127.0.0.1:18138` |
 | Regtest | `127.0.0.1:28138` |
 
-Zingod terminates TLS itself. Until you give it a certificate it serves a self-signed one, so ad-hoc clients skip verification (`-insecure`, `curl -k`). Wallets that verify certificates need a CA-issued pair: see [Indexer in the README](../../README.md#indexer) for the three-step setup, or put the TLS-terminating proxy below in front. In-network peers reach it at `zingod:8137`. `/readyz` and `/status` on the same port report whether its indexes have reached the tip.
+Zingod serves TLS itself, with a self-signed certificate by default ([Indexer in the README](../../README.md#indexer) covers using your own). Client-side details: [Zingod: connecting](https://github.com/zingolabs/zingod/blob/v1.2.0/book/src/wallets/connecting.md). The proxy setup below is for Zaino only.
 
 ```bash
-curl -sk https://127.0.0.1:8138/status
-
-# -insecure accepts the self-signed certificate; the proto files are the same as above
+# -insecure accepts the self-signed certificate; protos from scripts/vendor.sh zaino
 grpcurl -insecure \
-  -import-path vendor/zaino/zaino-proto/proto \
+  -import-path vendor/zaino/packages/zaino-proto/proto \
   -proto service.proto \
   127.0.0.1:8138 \
   cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo

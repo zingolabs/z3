@@ -42,6 +42,12 @@ copy_template() {
         return
     fi
 
+    # Directory here = Docker created the bind-mount source (compose up before setup)
+    if [ -e "$active" ]; then
+        log "FAIL: $active is not a file (remove it, then re-run this script)" >&2
+        exit 1
+    fi
+
     if [ ! -f "$example" ]; then
         log "FAIL: missing template $example" >&2
         exit 1

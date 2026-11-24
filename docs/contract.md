@@ -8,7 +8,7 @@ For copy-paste integration examples, see [`docs/integrations/`](integrations/).
 
 ## Stability promise
 
-Identifiers in the contract are SemVer-stable. The shipped contract version is `2.0.0`:
+Identifiers in the contract are SemVer-stable. The shipped contract version is `2.1.0`:
 
 - **Patch** (1.0.x): documentation-only changes; no consumer impact.
 - **Minor** (1.x.0): adds optional fields, new env vars, new optional services. Existing consumers continue working.
@@ -18,7 +18,7 @@ Identifiers NOT in this contract (Compose service container names, internal conf
 
 ### Contract version and image pins
 
-The contract version (`z3-contract.yaml` → `contract_version`) is the SemVer-stable API surface bumped per the policy above. Image pins are not part of the contract: they live as `${VAR:-tag}` defaults in `docker-compose.yml` and bump independently of the contract version (a Zebra patch release `4.4.1` → `4.4.2` does not require a contract bump). Operators override any pin with `Z3_ZEBRA_IMAGE`, `Z3_ZAINO_IMAGE`, or `Z3_ZALLET_IMAGE`. Platform constraints per image live in `z3-contract.yaml` under `image_platforms:`.
+The contract version (`z3-contract.yaml` → `contract_version`) is the SemVer-stable API surface bumped per the policy above. Image pins are not part of the contract: they live as `${VAR:-tag}` defaults in `docker-compose.yml` and bump independently of the contract version (a Zebra patch release `4.4.1` → `4.4.2` does not require a contract bump). Operators override any pin with `Z3_ZEBRA_IMAGE`, `Z3_ZAINO_IMAGE`, `Z3_ZINGOD_IMAGE`, or `Z3_ZALLET_IMAGE`. Platform constraints per image live in `z3-contract.yaml` under `image_platforms:`.
 
 ## What z3 publishes
 
@@ -61,7 +61,7 @@ Per-service health surface. The YAML's `healthchecks:` block carries the per-ser
 Operational details worth knowing:
 
 - **Zaino's check is a TCP probe on the gRPC port.** It confirms a listener exists; it does not validate the gRPC handler. Do not use it for production routing decisions.
-- **Zingod's check is its public `/readyz` over HTTPS on the gRPC port** (self-signed certificate, verification skipped). It returns 503 until Zingod's indexes reach the network tip. Zingod starts with Zebra and indexes as Zebra syncs, so like Zebra it reports unhealthy for the first sync.
+- **Zingod's check is `/readyz` over HTTPS on the gRPC port** (self-signed certificate, verification skipped). What it reports: [Zingod health check](https://github.com/zingolabs/zingod/blob/v1.2.0/book/src/operators/docker.md#health-check).
 - **Zallet has no healthcheck.** Its distroless image has no shell or probe binary, so `depends_on: condition: service_healthy` against Zallet hangs. Gate on Zebra's `/ready` instead and assume Zallet follows.
 - **`/ready` is sync-strict; `/healthy` is peer-only.** `/healthy` returns success when Zebra has at least `ZEBRA_HEALTH__MIN_CONNECTED_PEERS` peers. `/ready` independently requires that peer minimum, a sync status close to tip, a present chain tip, a local tip age within `ready_max_tip_age`, and estimated lag within `ZEBRA_HEALTH__READY_MAX_BLOCKS_BEHIND`. Estimated lag extrapolates from the best tip's header timestamp; tip age measures elapsed time since Zebra's local height increased, so the two checks do not share a clock. Mainnet keeps Zebra's 2-block default. Testnet uses 4 blocks as the bounded correction for an observed `lag=3` transition during a canonically current 225-second gap; release evidence must validate the header-time offset and both failure boundaries independently. Use `/ready` for production; the tracked `docker-compose.override.yml.example` flips to `/healthy` for development.
 

@@ -257,6 +257,11 @@ jobs:
           docker run --rm --user "$ZALLET_USER" -v "$PWD/config/regtest":/c:ro alpine \
             sh -c 'cat /c/zallet.toml >/dev/null && echo "compose user read OK"'
 
+      - name: Start Zingod, wait for healthy
+        # Catches config keys renamed or removed on a Zingod image bump
+        run: |
+          docker compose --env-file .env.regtest --profile zingod up -d --wait --wait-timeout 120 zingod
+
       - name: Verify the cookie volume is attachable
         # Regtest disables cookie auth (ZEBRA_RPC__ENABLE_COOKIE_AUTH=false) so
         # Zebra does not write /auth/.cookie. This check only verifies that the
@@ -281,6 +286,8 @@ jobs:
           docker compose --env-file .env.regtest logs zallet --tail 50 2>&1 || true
           echo "=== rpc-router logs ==="
           docker compose --env-file .env.regtest logs rpc-router --tail 50 2>&1 || true
+          echo "=== Zingod logs ==="
+          docker compose --env-file .env.regtest --profile zingod logs zingod --tail 50 2>&1 || true
 
       - name: Tear down
         if: always()

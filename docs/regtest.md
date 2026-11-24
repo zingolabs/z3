@@ -113,14 +113,14 @@ grpcurl -plaintext \
 
 ## Test Zingod gRPC
 
-Zingod ships behind the `zingod` profile and serves the same protocol over TLS with a self-signed certificate, on host port `28138` (`Z3_ZINGOD_HOST_GRPC_PORT`). It reads the regtest upgrade schedule from Zebra and serves once its indexes reach Zebra's tip:
+Zingod ships behind the `zingod` profile and serves the same protocol over TLS with a self-signed certificate, on host port `28138` (`Z3_ZINGOD_HOST_GRPC_PORT`):
 
 ```bash
 docker compose --env-file .env.regtest --profile zingod up -d zingod
-curl -sk https://127.0.0.1:28138/status
 
+# protos from scripts/vendor.sh zaino
 grpcurl -insecure \
-  -import-path vendor/zaino/zaino-proto/proto \
+  -import-path vendor/zaino/packages/zaino-proto/proto \
   -proto service.proto \
   127.0.0.1:28138 \
   cash.z.wallet.sdk.rpc.CompactTxStreamer/GetLightdInfo

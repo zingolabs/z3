@@ -177,8 +177,7 @@ services:
   zingod:
     # Opt-in via --profile zingod (config: config/<network>/zingod.toml)
     profiles: [zingod]
-    image: ${Z3_ZINGOD_IMAGE:-zingodevops/zingod:1.1.0}
-    # amd64 only (arm64: docker-compose.build.yml)
+    image: ${Z3_ZINGOD_IMAGE:-zingodevops/zingod:1.2.0}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     restart: unless-stopped
     stop_grace_period: 15s
@@ -188,7 +187,7 @@ services:
       zebra:
         condition: service_started
       cookie-permissions:
-        condition: service_started
+        condition: service_healthy
     environment:
       # Bare `info` logs a rustls warning per healthcheck
       RUST_LOG: ${Z3_ZINGOD_RUST_LOG:-${RUST_LOG:-zingod=info}}
